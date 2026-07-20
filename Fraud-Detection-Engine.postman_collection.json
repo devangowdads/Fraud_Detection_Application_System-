@@ -1,0 +1,225 @@
+{
+  "info": {
+    "name": "Fraud Detection Engine",
+    "description": "Test collection for the Spring Boot Fraud Detection Rule Engine API. Covers SAFE, SUSPICIOUS, and FRAUD scenarios, idempotency, and validation errors.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Safe Transaction",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"txn-101\",\n  \"accountId\": \"acc-1\",\n  \"amount\": 50.00,\n  \"country\": \"US\",\n  \"city\": \"New York\",\n  \"success\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "transactions"]
+        },
+        "description": "Small amount, single request, no other rules triggered. Expected status: SAFE"
+      }
+    },
+    {
+      "name": "2. High Value Transaction (Suspicious)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"txn-102\",\n  \"accountId\": \"acc-2\",\n  \"amount\": 25000.00,\n  \"country\": \"US\",\n  \"city\": \"Boston\",\n  \"success\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "transactions"]
+        },
+        "description": "Amount exceeds the HIGH_VALUE threshold (10,000). Expected status: SUSPICIOUS, reasonCodes: HIGH_VALUE_TXN"
+      }
+    },
+    {
+      "name": "3a. Repeated Failure - Attempt 1",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"txn-103a\",\n  \"accountId\": \"acc-3\",\n  \"amount\": 20.00,\n  \"country\": \"US\",\n  \"success\": false\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "transactions"]
+        },
+        "description": "First failed attempt for acc-3. Expected status: SAFE (only 1 failure so far, threshold is 3)"
+      }
+    },
+    {
+      "name": "3b. Repeated Failure - Attempt 2",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"txn-103b\",\n  \"accountId\": \"acc-3\",\n  \"amount\": 20.00,\n  \"country\": \"US\",\n  \"success\": false\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "transactions"]
+        },
+        "description": "Second failed attempt for acc-3, within the 30-minute window. Expected status: SAFE"
+      }
+    },
+    {
+      "name": "3c. Repeated Failure - Attempt 3 (Triggers Rule)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"txn-103c\",\n  \"accountId\": \"acc-3\",\n  \"amount\": 20.00,\n  \"country\": \"US\",\n  \"success\": false\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "transactions"]
+        },
+        "description": "Third failed attempt for acc-3 within 30 minutes. Expected status: SUSPICIOUS, reasonCodes: REPEATED_FAILURES"
+      }
+    },
+    {
+      "name": "4a. Geo Anomaly - Transaction from US",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"txn-104\",\n  \"accountId\": \"acc-4\",\n  \"amount\": 20.00,\n  \"country\": \"US\",\n  \"success\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "transactions"]
+        },
+        "description": "First transaction for acc-4 from US. Expected status: SAFE"
+      }
+    },
+    {
+      "name": "4b. Geo Anomaly - Transaction from IN (Triggers Rule)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"txn-105\",\n  \"accountId\": \"acc-4\",\n  \"amount\": 20.00,\n  \"country\": \"IN\",\n  \"success\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "transactions"]
+        },
+        "description": "Second transaction for acc-4, this time from IN, within 15 minutes of the US transaction. Expected status: SUSPICIOUS, reasonCodes: GEO_ANOMALY_DETECTED"
+      }
+    },
+    {
+      "name": "5a-5e. Frequency Breach (Run 5x quickly)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"txn-freq-{{$randomInt}}\",\n  \"accountId\": \"acc-5\",\n  \"amount\": 15.00,\n  \"country\": \"US\",\n  \"success\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "transactions"]
+        },
+        "description": "Uses a random idempotencyKey each run so you can click 'Send' 5 times quickly for the same acc-5. On the 5th request within 10 minutes, expected status: SUSPICIOUS, reasonCodes: VELOCITY_BREACH"
+      }
+    },
+    {
+      "name": "6. Multiple Rules Triggered (Fraud)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"txn-106\",\n  \"accountId\": \"acc-4\",\n  \"amount\": 50000.00,\n  \"country\": \"FR\",\n  \"success\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "transactions"]
+        },
+        "description": "Run this AFTER requests 4a and 4b for acc-4. High amount (HIGH_VALUE_TXN) + new country again (GEO_ANOMALY_DETECTED) = 2 rules triggered. Expected status: FRAUD"
+      }
+    },
+    {
+      "name": "7. Idempotency Retry (Duplicate Key)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"txn-101\",\n  \"accountId\": \"acc-1\",\n  \"amount\": 50.00,\n  \"country\": \"US\",\n  \"city\": \"New York\",\n  \"success\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "transactions"]
+        },
+        "description": "Same idempotencyKey as request #1 (txn-101). Expected: returns the SAME stored result instead of creating a new transaction/result."
+      }
+    },
+    {
+      "name": "8. Validation Error - Missing Fields",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": -10\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "transactions"]
+        },
+        "description": "Missing idempotencyKey and accountId, negative amount. Expected: 400 Bad Request with field-level error messages."
+      }
+    }
+  ]
+}
